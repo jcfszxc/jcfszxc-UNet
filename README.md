@@ -11,3 +11,9 @@ python preprocess.py
 ```shell
 python train.py
 ```
+
+# 3. start evaluate
+```shell
+python evaluate.py
+```
+
