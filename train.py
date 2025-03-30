@@ -24,7 +24,23 @@ from data_loading import load_preprocessed_data, display_dataset_info, visualize
 from utils.dice_score import dice_coeff, dice_loss
 from utils.utils import set_seed
 
-from UNetFamily import UNet, AttentionUNet
+from UNetFamily import (
+    UNet,
+    AttentionUNet,
+    R2UNet,
+    R2AttentionUNet,
+    BARUNet,
+    BIARUNet,
+    DenseUNet,
+    MCUNet,
+    ResUNet,
+    FRUNet,
+    MultiResUNet,
+    BCDUNet,
+    SegNet,
+    RetinaLiteNet,
+    UNetPP
+)
 
 
 def train_model(
@@ -56,7 +72,7 @@ def train_model(
     # 4. 划分训练集和验证集
     n_samples = len(dataset["images"])
     n_val = int(n_samples * val_percent)
-    n_train = len(dataset) - n_val
+    n_train = len(dataset["images"]) - n_val
 
     # 创建索引并随机打乱
     indices = np.arange(n_samples)
@@ -94,10 +110,18 @@ def train_model(
         weight_decay=weight_decay,
         momentum=momentum,
     )
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "max", patience=5)
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "max", patience=5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="max",
+        factor=0.7,  # 每次降低到原来的70%
+        patience=5,  # 5个epoch没有改善才降低学习率
+        verbose=True,  # 打印学习率变化信息
+        threshold=0.01,  # 性能改善需要超过1%才算显著改善
+        cooldown=2,  # 学习率降低后等待2个epoch再次检查
+    )
     grad_scaler = torch.cuda.amp.GradScaler(enabled=True)
     criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss()
-    global_step = 0
 
     # 设置patch的一半大小
     half_patch = patch_size // 2
@@ -229,26 +253,38 @@ def train_model(
 
                 with torch.autocast(device.type if device.type != "mps" else "cpu"):
                     masks_pred = model(batch_images)
-                    loss = criterion(masks_pred, batch_labels)
-                    loss += dice_loss(
-                        torch.sigmoid(masks_pred.squeeze(1)),
+                    
+                    # Check for NaN in model output
+                    if torch.isnan(masks_pred).any():
+                        print("NaN in model output before loss calculation!")
+                        continue
+                        
+                    # Apply sigmoid first for numerical stability
+                    masks_pred_sigmoid = torch.sigmoid(masks_pred)
+                    
+                    # Calculate BCE loss
+                    bce_loss = criterion(masks_pred, batch_labels)
+                    
+                    # Calculate Dice loss with the sigmoid-activated predictions
+                    dice = dice_loss(
+                        masks_pred_sigmoid.squeeze(1),
                         batch_labels.squeeze(1),
                         multiclass=False,
                     )
-
-                if torch.isnan(loss).any():
-                    print("NaN loss detected! Debugging info:")
-                    print(
-                        f"Batch images min/max: {batch_images.min()}/{batch_images.max()}"
-                    )
-                    print(
-                        f"Batch labels min/max: {batch_labels.min()}/{batch_labels.max()}"
-                    )
-                    print(
-                        f"Model output min/max: {masks_pred.min()}/{masks_pred.max()}"
-                    )
-                    # 可以选择跳过这个batch或中断训练
-                    continue
+                    
+                    # Combine losses with a weighting factor
+                    alpha = 0.5  # You can adjust this weight
+                    loss = alpha * bce_loss + (1 - alpha) * dice
+                    
+                    # Check for NaN in loss
+                    if torch.isnan(loss).any():
+                        print("NaN loss detected! Debugging info:")
+                        print(f"BCE loss: {bce_loss.item()}")
+                        print(f"Dice loss: {dice.item()}")
+                        print(f"Batch images min/max: {batch_images.min()}/{batch_images.max()}")
+                        print(f"Batch labels min/max: {batch_labels.min()}/{batch_labels.max()}")
+                        print(f"Model output min/max: {masks_pred.min()}/{masks_pred.max()}")
+                        continue
 
                 optimizer.zero_grad(set_to_none=True)
                 grad_scaler.scale(loss).backward()
@@ -309,6 +345,8 @@ def train_model(
                 masks_pred_binary, batch_labels_val, reduce_batch_first=False
             )
 
+            scheduler.step(dice_score)
+
             # 计算每个类别的Dice分数
             dice_score_bg = dice_coeff(
                 masks_pred_binary, batch_labels_val, reduce_batch_first=False
@@ -342,7 +380,12 @@ def train_model(
 
         # Print validation results in a clean format
         print(
-            f"Epoch {epoch} - Average loss: {epoch_loss/steps:.4f} - Dice score: {dice_score:.4f} - Avg Dice score: {dice_score_avg:.4f} - Best dice score: {best_dice_score:.4f}"
+            f"Epoch {epoch} - "
+            f"LR: {optimizer.param_groups[0]['lr']:.2e} - "  # 使用科学计数法表示学习率0
+            f"Loss: {epoch_loss/steps:.4g} - "  # 使用.4g格式去除不必要的0
+            f"Dice: {dice_score:.4g} - "
+            f"Avg Dice: {dice_score_avg:.4g} - "
+            f"Best Dice: {best_dice_score:.4g}"
         )
 
         sample_num = 100
@@ -449,8 +492,26 @@ if __name__ == "__main__":
         model = torch.load(args.load, map_location=device)
         logging.info(f"Model loaded from {args.load}")
     else:
-        model = UNet.UNet()
-        # model = AttentionUNet.AttentionUNet()
+        # model = UNet.UNet()  # lr=1e-6 Dice Score: 0.8098
+        # model = AttentionUNet.AttentionUNet()  # lr=1e-6 Dice Score: 0.8098
+        # model = DenseUNet.DenseUNet()  # lr=1e-6 Dice Score: 0.8115
+        # model = MCUNet.MCUNet()  # lr=1e-6 Dice Score: 0.8051
+        # model = ResUNet.ResUNet()  # lr=1e-6 Dice Score: 0.7609
+        # model = FRUNet.FRUNet()  # lr=1e-6 Dice Score: 0.8227
+        # model = MultiResUNet.MultiResUNet()  # lr=1e-6 Dice Score: 0.7778
+        # model = SegNet.SegNet()  # lr=1e-6 Dice Score: 0.7325
+        
+        
+        # model = R2UNet.R2UNet()  # 分数低，不适合
+        # model = R2AttentionUNet.R2AttentionUNet()  # 分数低，不适合
+        # model = BARUNet.BARUNet()  # 分数低，不适合
+        # model = BIARUNet.BIARUNet()  # 分数低，不适合
+        # model = BCDUNet.BCDU_net_D1(N=args.patch_size)  # 分数低，不适合
+        # model = BCDUNet.BCDU_net_D3(N=args.patch_size)  # 分数低，不适合
+        # model = RetinaLiteNet.TransFuseNet()  # 分数低，不适合
+        # model = UNetPP.NestedUNet()  # 分数低，不适合
+        
+        
         model = model.to(memory_format=torch.channels_last)
 
     logging.info(
