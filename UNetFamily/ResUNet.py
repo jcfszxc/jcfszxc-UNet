@@ -4,8 +4,7 @@
 # @Author        : jcfszxc
 # @Email         : jcfszxc.ai@gmail.com
 # @File          : ResUNet.py
-# @Description   : 
-
+# @Description   :
 
 
 import torch
@@ -36,10 +35,10 @@ class ResUNet(nn.Module):
         self.bridge = ResidualConv(256, 512, 2, 1)
 
         self.upsample_1 = Upsample(512, 512, 2, 2)
-        self.up_residual_conv1 = ResidualConv(512+256, 256, 1, 1)
+        self.up_residual_conv1 = ResidualConv(512 + 256, 256, 1, 1)
 
         self.upsample_2 = Upsample(256, 256, 2, 2)
-        self.up_residual_conv2 = ResidualConv(128+256, 128, 1, 1)
+        self.up_residual_conv2 = ResidualConv(128 + 256, 128, 1, 1)
 
         self.upsample_3 = Upsample(128, 128, 2, 2)
         self.up_residual_conv3 = ResidualConv(128 + 64, 64, 1, 1)

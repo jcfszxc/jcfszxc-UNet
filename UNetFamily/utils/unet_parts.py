@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models.inception import BasicConv2d
-from timm.models.layers import trunc_normal_
+from timm.layers import trunc_normal_
 
 
 class DoubleConv(nn.Module):
@@ -451,7 +451,6 @@ class Up_v1(nn.Module):
         return x
 
 
-
 class ResidualConv(nn.Module):
     def __init__(self, input_dim, output_dim, stride, padding):
         super(ResidualConv, self).__init__()
@@ -467,16 +466,13 @@ class ResidualConv(nn.Module):
             nn.Conv2d(output_dim, output_dim, kernel_size=3, padding=1),
         )
         self.conv_skip = nn.Sequential(
-            nn.Conv2d(input_dim, output_dim, kernel_size=3,
-                      stride=stride, padding=1),
+            nn.Conv2d(input_dim, output_dim, kernel_size=3, stride=stride, padding=1),
             nn.BatchNorm2d(output_dim),
         )
 
     def forward(self, x):
 
         return self.conv_block(x) + self.conv_skip(x)
-
-
 
 
 class Upsample(nn.Module):
@@ -489,7 +485,6 @@ class Upsample(nn.Module):
 
     def forward(self, x):
         return self.upsample(x)
-
 
 
 class conv(nn.Module):
@@ -505,8 +500,8 @@ class conv(nn.Module):
             nn.Conv2d(out_c, out_c, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_c),
             nn.Dropout2d(dp),
-            nn.LeakyReLU(0.1, inplace=True))
-        
+            nn.LeakyReLU(0.1, inplace=True),
+        )
 
     def forward(self, x):
         return self.conv(x)
@@ -515,19 +510,18 @@ class conv(nn.Module):
 class feature_fuse(nn.Module):
     def __init__(self, in_c, out_c):
         super(feature_fuse, self).__init__()
-        self.conv11 = nn.Conv2d(
-            in_c, out_c, kernel_size=1, padding=0, bias=False)
-        self.conv33 = nn.Conv2d(
-            in_c, out_c, kernel_size=3, padding=1, bias=False)
+        self.conv11 = nn.Conv2d(in_c, out_c, kernel_size=1, padding=0, bias=False)
+        self.conv33 = nn.Conv2d(in_c, out_c, kernel_size=3, padding=1, bias=False)
         self.conv33_di = nn.Conv2d(
-            in_c, out_c, kernel_size=3, padding=2, bias=False, dilation=2)
+            in_c, out_c, kernel_size=3, padding=2, bias=False, dilation=2
+        )
         self.norm = nn.BatchNorm2d(out_c)
 
     def forward(self, x):
         x1 = self.conv11(x)
         x2 = self.conv33(x)
         x3 = self.conv33_di(x)
-        out = self.norm(x1+x2+x3)
+        out = self.norm(x1 + x2 + x3)
         return out
 
 
@@ -535,10 +529,12 @@ class up(nn.Module):
     def __init__(self, in_c, out_c, dp=0):
         super(up, self).__init__()
         self.up = nn.Sequential(
-            nn.ConvTranspose2d(in_c, out_c, kernel_size=2,
-                               padding=0, stride=2, bias=False),
+            nn.ConvTranspose2d(
+                in_c, out_c, kernel_size=2, padding=0, stride=2, bias=False
+            ),
             nn.BatchNorm2d(out_c),
-            nn.LeakyReLU(0.1, inplace=False))
+            nn.LeakyReLU(0.1, inplace=False),
+        )
 
     def forward(self, x):
         x = self.up(x)
@@ -549,17 +545,18 @@ class down(nn.Module):
     def __init__(self, in_c, out_c, dp=0):
         super(down, self).__init__()
         self.down = nn.Sequential(
-            nn.Conv2d(in_c, out_c, kernel_size=2,
-                      padding=0, stride=2, bias=False),
+            nn.Conv2d(in_c, out_c, kernel_size=2, padding=0, stride=2, bias=False),
             nn.BatchNorm2d(out_c),
-            nn.LeakyReLU(0.1, inplace=True))
+            nn.LeakyReLU(0.1, inplace=True),
+        )
 
     def forward(self, x):
         x = self.down(x)
         return x
 
+
 class block(nn.Module):
-    def __init__(self, in_c, out_c,  dp=0, is_up=False, is_down=False, fuse=False):
+    def __init__(self, in_c, out_c, dp=0, is_up=False, is_down=False, fuse=False):
         super(block, self).__init__()
         self.in_c = in_c
         self.out_c = out_c
@@ -572,11 +569,11 @@ class block(nn.Module):
         self.is_down = is_down
         self.conv = conv(out_c, out_c, dp=dp)
         if self.is_up == True:
-            self.up = up(out_c, out_c//2)
+            self.up = up(out_c, out_c // 2)
         if self.is_down == True:
-            self.down = down(out_c, out_c*2)
+            self.down = down(out_c, out_c * 2)
 
-    def forward(self,  x):
+    def forward(self, x):
         if self.in_c != self.out_c:
             x = self.fuse(x)
         x = self.conv(x)
@@ -594,13 +591,17 @@ class block(nn.Module):
             return x, x_up, x_down
 
 
-
 class InitWeights_He(object):
     def __init__(self, neg_slope=1e-2):
         self.neg_slope = neg_slope
 
     def __call__(self, module):
-        if isinstance(module, nn.Conv3d) or isinstance(module, nn.Conv2d) or isinstance(module, nn.ConvTranspose2d) or isinstance(module, nn.ConvTranspose3d):
+        if (
+            isinstance(module, nn.Conv3d)
+            or isinstance(module, nn.Conv2d)
+            or isinstance(module, nn.ConvTranspose2d)
+            or isinstance(module, nn.ConvTranspose3d)
+        ):
             module.weight = nn.init.kaiming_normal_(module.weight, a=self.neg_slope)
             if module.bias is not None:
                 module.bias = nn.init.constant_(module.bias, 0)
@@ -611,135 +612,183 @@ class InitWeights_He(object):
         elif isinstance(module, nn.LayerNorm):
             nn.init.constant_(module.bias, 0)
             nn.init.constant_(module.weight, 1.0)
-            
+
 
 class Conv2d_batchnorm(torch.nn.Module):
-	'''
-	2D Convolutional layers
+    """
+    2D Convolutional layers
 
-	Arguments:
-		num_in_filters {int} -- number of input filters
-		num_out_filters {int} -- number of output filters
-		kernel_size {tuple} -- size of the convolving kernel
-		stride {tuple} -- stride of the convolution (default: {(1, 1)})
-		activation {str} -- activation function (default: {'relu'})
+    Arguments:
+            num_in_filters {int} -- number of input filters
+            num_out_filters {int} -- number of output filters
+            kernel_size {tuple} -- size of the convolving kernel
+            stride {tuple} -- stride of the convolution (default: {(1, 1)})
+            activation {str} -- activation function (default: {'relu'})
 
-	'''
-	def __init__(self, num_in_filters, num_out_filters, kernel_size, stride = (1,1), activation = 'relu'):
-		super().__init__()
-		self.activation = activation
-		self.conv1 = torch.nn.Conv2d(in_channels=num_in_filters, out_channels=num_out_filters, kernel_size=kernel_size, stride=stride, padding = 'same')
-		self.batchnorm = torch.nn.BatchNorm2d(num_out_filters)
-	
-	def forward(self,x):
-		x = self.conv1(x)
-		x = self.batchnorm(x)
-		
-		if self.activation == 'relu':
-			return torch.nn.functional.relu(x)
-		else:
-			return x
+    """
+
+    def __init__(
+        self,
+        num_in_filters,
+        num_out_filters,
+        kernel_size,
+        stride=(1, 1),
+        activation="relu",
+    ):
+        super().__init__()
+        self.activation = activation
+        self.conv1 = torch.nn.Conv2d(
+            in_channels=num_in_filters,
+            out_channels=num_out_filters,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding="same",
+        )
+        self.batchnorm = torch.nn.BatchNorm2d(num_out_filters)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.batchnorm(x)
+
+        if self.activation == "relu":
+            return torch.nn.functional.relu(x)
+        else:
+            return x
 
 
 class Multiresblock(torch.nn.Module):
-	'''
-	MultiRes Block
-	
-	Arguments:
-		num_in_channels {int} -- Number of channels coming into mutlires block
-		num_filters {int} -- Number of filters in a corrsponding UNet stage
-		alpha {float} -- alpha hyperparameter (default: 1.67)
-	
-	'''
+    """
+    MultiRes Block
 
-	def __init__(self, num_in_channels, num_filters, alpha=1.67):
-	
-		super().__init__()
-		self.alpha = alpha
-		self.W = num_filters * alpha
-		
-		filt_cnt_3x3 = int(self.W*0.167)
-		filt_cnt_5x5 = int(self.W*0.333)
-		filt_cnt_7x7 = int(self.W*0.5)
-		num_out_filters = filt_cnt_3x3 + filt_cnt_5x5 + filt_cnt_7x7
-		
-		self.shortcut = Conv2d_batchnorm(num_in_channels ,num_out_filters , kernel_size = (1,1), activation='None')
+    Arguments:
+            num_in_channels {int} -- Number of channels coming into mutlires block
+            num_filters {int} -- Number of filters in a corrsponding UNet stage
+            alpha {float} -- alpha hyperparameter (default: 1.67)
 
-		self.conv_3x3 = Conv2d_batchnorm(num_in_channels, filt_cnt_3x3, kernel_size = (3,3), activation='relu')
+    """
 
-		self.conv_5x5 = Conv2d_batchnorm(filt_cnt_3x3, filt_cnt_5x5, kernel_size = (3,3), activation='relu')
-		
-		self.conv_7x7 = Conv2d_batchnorm(filt_cnt_5x5, filt_cnt_7x7, kernel_size = (3,3), activation='relu')
+    def __init__(self, num_in_channels, num_filters, alpha=1.67):
 
-		self.batch_norm1 = torch.nn.BatchNorm2d(num_out_filters)
-		self.batch_norm2 = torch.nn.BatchNorm2d(num_out_filters)
+        super().__init__()
+        self.alpha = alpha
+        self.W = num_filters * alpha
 
-	def forward(self,x):
+        filt_cnt_3x3 = int(self.W * 0.167)
+        filt_cnt_5x5 = int(self.W * 0.333)
+        filt_cnt_7x7 = int(self.W * 0.5)
+        num_out_filters = filt_cnt_3x3 + filt_cnt_5x5 + filt_cnt_7x7
 
-		shrtct = self.shortcut(x)
-		
-		a = self.conv_3x3(x)
-		b = self.conv_5x5(a)
-		c = self.conv_7x7(b)
+        self.shortcut = Conv2d_batchnorm(
+            num_in_channels, num_out_filters, kernel_size=(1, 1), activation="None"
+        )
 
-		x = torch.cat([a,b,c],axis=1)
-		x = self.batch_norm1(x)
+        self.conv_3x3 = Conv2d_batchnorm(
+            num_in_channels, filt_cnt_3x3, kernel_size=(3, 3), activation="relu"
+        )
 
-		x = x + shrtct
-		x = self.batch_norm2(x)
-		x = torch.nn.functional.relu(x)
-	
-		return x
+        self.conv_5x5 = Conv2d_batchnorm(
+            filt_cnt_3x3, filt_cnt_5x5, kernel_size=(3, 3), activation="relu"
+        )
+
+        self.conv_7x7 = Conv2d_batchnorm(
+            filt_cnt_5x5, filt_cnt_7x7, kernel_size=(3, 3), activation="relu"
+        )
+
+        self.batch_norm1 = torch.nn.BatchNorm2d(num_out_filters)
+        self.batch_norm2 = torch.nn.BatchNorm2d(num_out_filters)
+
+    def forward(self, x):
+
+        shrtct = self.shortcut(x)
+
+        a = self.conv_3x3(x)
+        b = self.conv_5x5(a)
+        c = self.conv_7x7(b)
+
+        x = torch.cat([a, b, c], axis=1)
+        x = self.batch_norm1(x)
+
+        x = x + shrtct
+        x = self.batch_norm2(x)
+        x = torch.nn.functional.relu(x)
+
+        return x
 
 
 class Respath(torch.nn.Module):
-	'''
-	ResPath
-	
-	Arguments:
-		num_in_filters {int} -- Number of filters going in the respath
-		num_out_filters {int} -- Number of filters going out the respath
-		respath_length {int} -- length of ResPath
-		
-	'''
+    """
+    ResPath
 
-	def __init__(self, num_in_filters, num_out_filters, respath_length):
-	
-		super().__init__()
+    Arguments:
+            num_in_filters {int} -- Number of filters going in the respath
+            num_out_filters {int} -- Number of filters going out the respath
+            respath_length {int} -- length of ResPath
 
-		self.respath_length = respath_length
-		self.shortcuts = torch.nn.ModuleList([])
-		self.convs = torch.nn.ModuleList([])
-		self.bns = torch.nn.ModuleList([])
+    """
 
-		for i in range(self.respath_length):
-			if(i==0):
-				self.shortcuts.append(Conv2d_batchnorm(num_in_filters, num_out_filters, kernel_size = (1,1), activation='None'))
-				self.convs.append(Conv2d_batchnorm(num_in_filters, num_out_filters, kernel_size = (3,3),activation='relu'))
+    def __init__(self, num_in_filters, num_out_filters, respath_length):
 
-				
-			else:
-				self.shortcuts.append(Conv2d_batchnorm(num_out_filters, num_out_filters, kernel_size = (1,1), activation='None'))
-				self.convs.append(Conv2d_batchnorm(num_out_filters, num_out_filters, kernel_size = (3,3), activation='relu'))
+        super().__init__()
 
-			self.bns.append(torch.nn.BatchNorm2d(num_out_filters))
-		
-	
-	def forward(self,x):
+        self.respath_length = respath_length
+        self.shortcuts = torch.nn.ModuleList([])
+        self.convs = torch.nn.ModuleList([])
+        self.bns = torch.nn.ModuleList([])
 
-		for i in range(self.respath_length):
+        for i in range(self.respath_length):
+            if i == 0:
+                self.shortcuts.append(
+                    Conv2d_batchnorm(
+                        num_in_filters,
+                        num_out_filters,
+                        kernel_size=(1, 1),
+                        activation="None",
+                    )
+                )
+                self.convs.append(
+                    Conv2d_batchnorm(
+                        num_in_filters,
+                        num_out_filters,
+                        kernel_size=(3, 3),
+                        activation="relu",
+                    )
+                )
 
-			shortcut = self.shortcuts[i](x)
+            else:
+                self.shortcuts.append(
+                    Conv2d_batchnorm(
+                        num_out_filters,
+                        num_out_filters,
+                        kernel_size=(1, 1),
+                        activation="None",
+                    )
+                )
+                self.convs.append(
+                    Conv2d_batchnorm(
+                        num_out_filters,
+                        num_out_filters,
+                        kernel_size=(3, 3),
+                        activation="relu",
+                    )
+                )
 
-			x = self.convs[i](x)
-			x = self.bns[i](x)
-			x = torch.nn.functional.relu(x)
+            self.bns.append(torch.nn.BatchNorm2d(num_out_filters))
 
-			x = x + shortcut
-			x = self.bns[i](x)
-			x = torch.nn.functional.relu(x)
+    def forward(self, x):
 
-		return x
+        for i in range(self.respath_length):
+
+            shortcut = self.shortcuts[i](x)
+
+            x = self.convs[i](x)
+            x = self.bns[i](x)
+            x = torch.nn.functional.relu(x)
+
+            x = x + shortcut
+            x = self.bns[i](x)
+            x = torch.nn.functional.relu(x)
+
+        return x
 
 
 class ConvBlock(nn.Module):
@@ -749,12 +798,13 @@ class ConvBlock(nn.Module):
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
-    
+
     def forward(self, x):
         x = self.conv(x)
         return x
+
 
 class ConvLSTM2DCell(nn.Module):
     def __init__(self, input_dim, hidden_dim, kernel_size, padding):
@@ -763,49 +813,58 @@ class ConvLSTM2DCell(nn.Module):
         self.hidden_dim = hidden_dim
         self.kernel_size = kernel_size
         self.padding = padding
-        
-        self.conv = nn.Conv2d(in_channels=input_dim + hidden_dim,
-                              out_channels=4 * hidden_dim,
-                              kernel_size=kernel_size,
-                              padding=padding)
-    
+
+        self.conv = nn.Conv2d(
+            in_channels=input_dim + hidden_dim,
+            out_channels=4 * hidden_dim,
+            kernel_size=kernel_size,
+            padding=padding,
+        )
+
     def forward(self, input_tensor, cur_state):
         h_cur, c_cur = cur_state
-        
+
         combined = torch.cat([input_tensor, h_cur], dim=1)
         combined_conv = self.conv(combined)
-        
+
         cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_dim, dim=1)
-        
+
         i = torch.sigmoid(cc_i)
         f = torch.sigmoid(cc_f)
         o = torch.sigmoid(cc_o)
         g = torch.tanh(cc_g)
-        
+
         c_next = f * c_cur + i * g
         h_next = o * torch.tanh(c_next)
-        
+
         return h_next, c_next
+
 
 class ConvLSTM2D(nn.Module):
     def __init__(self, input_dim, hidden_dim, kernel_size, padding, go_backwards=False):
         super(ConvLSTM2D, self).__init__()
         self.go_backwards = go_backwards
         self.cell = ConvLSTM2DCell(input_dim, hidden_dim, kernel_size, padding)
-    
+
     def forward(self, x):
         # x shape: (batch, time_steps, channels, height, width)
         batch_size, seq_len, _, height, width = x.size()
-        
+
         # Initialize hidden and cell states
-        h = torch.zeros(batch_size, self.cell.hidden_dim, height, width, device=x.device)
-        c = torch.zeros(batch_size, self.cell.hidden_dim, height, width, device=x.device)
-        
+        h = torch.zeros(
+            batch_size, self.cell.hidden_dim, height, width, device=x.device
+        )
+        c = torch.zeros(
+            batch_size, self.cell.hidden_dim, height, width, device=x.device
+        )
+
         # Loop through sequence
-        seq_indices = range(seq_len-1, -1, -1) if self.go_backwards else range(seq_len)
+        seq_indices = (
+            range(seq_len - 1, -1, -1) if self.go_backwards else range(seq_len)
+        )
         for t in seq_indices:
             h, c = self.cell(x[:, t, :, :, :], (h, c))
-        
+
         # Return only the last hidden state
         return h
 
@@ -814,11 +873,13 @@ class UpConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UpConv, self).__init__()
         self.up = nn.Sequential(
-            nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2, padding=0),
+            nn.ConvTranspose2d(
+                in_channels, out_channels, kernel_size=2, stride=2, padding=0
+            ),
             nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
-    
+
     def forward(self, x):
         x = self.up(x)
         return x

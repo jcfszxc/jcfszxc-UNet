@@ -4,12 +4,13 @@
 # @Author        : jcfszxc
 # @Email         : jcfszxc.ai@gmail.com
 # @File          : UNetPP.py
-# @Description   : 
+# @Description   :
 
 
 import torch
 import torch.nn as nn
 from UNetFamily.utils.unet_parts import *
+
 
 class DoubleConv(nn.Module):
     def __init__(self, in_ch, out_ch):
@@ -20,25 +21,26 @@ class DoubleConv(nn.Module):
             nn.ReLU(inplace=True),
             nn.Conv2d(out_ch, out_ch, 3, padding=1),
             nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
 
     def forward(self, input):
         return self.conv(input)
 
+
 class NestedUNet(nn.Module):
-    def __init__(self, in_channel=3,out_channel=1):
+    def __init__(self, in_channel=3, out_channel=1):
         super().__init__()
-        
+
         self.n_channels = in_channel
         self.n_classes = out_channel
-        
+
         self.deepsupervision = False
 
         nb_filter = [32, 64, 128, 256, 512]
 
         self.pool = nn.MaxPool2d(2, 2)
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
 
         self.conv0_0 = DoubleConv(in_channel, nb_filter[0])
         self.conv1_0 = DoubleConv(nb_filter[0], nb_filter[1])
@@ -46,19 +48,19 @@ class NestedUNet(nn.Module):
         self.conv3_0 = DoubleConv(nb_filter[2], nb_filter[3])
         self.conv4_0 = DoubleConv(nb_filter[3], nb_filter[4])
 
-        self.conv0_1 = DoubleConv(nb_filter[0]+nb_filter[1], nb_filter[0])
-        self.conv1_1 = DoubleConv(nb_filter[1]+nb_filter[2], nb_filter[1])
-        self.conv2_1 = DoubleConv(nb_filter[2]+nb_filter[3], nb_filter[2])
-        self.conv3_1 = DoubleConv(nb_filter[3]+nb_filter[4], nb_filter[3])
+        self.conv0_1 = DoubleConv(nb_filter[0] + nb_filter[1], nb_filter[0])
+        self.conv1_1 = DoubleConv(nb_filter[1] + nb_filter[2], nb_filter[1])
+        self.conv2_1 = DoubleConv(nb_filter[2] + nb_filter[3], nb_filter[2])
+        self.conv3_1 = DoubleConv(nb_filter[3] + nb_filter[4], nb_filter[3])
 
-        self.conv0_2 = DoubleConv(nb_filter[0]*2+nb_filter[1], nb_filter[0])
-        self.conv1_2 = DoubleConv(nb_filter[1]*2+nb_filter[2], nb_filter[1])
-        self.conv2_2 = DoubleConv(nb_filter[2]*2+nb_filter[3], nb_filter[2])
+        self.conv0_2 = DoubleConv(nb_filter[0] * 2 + nb_filter[1], nb_filter[0])
+        self.conv1_2 = DoubleConv(nb_filter[1] * 2 + nb_filter[2], nb_filter[1])
+        self.conv2_2 = DoubleConv(nb_filter[2] * 2 + nb_filter[3], nb_filter[2])
 
-        self.conv0_3 = DoubleConv(nb_filter[0]*3+nb_filter[1], nb_filter[0])
-        self.conv1_3 = DoubleConv(nb_filter[1]*3+nb_filter[2], nb_filter[1])
+        self.conv0_3 = DoubleConv(nb_filter[0] * 3 + nb_filter[1], nb_filter[0])
+        self.conv1_3 = DoubleConv(nb_filter[1] * 3 + nb_filter[2], nb_filter[1])
 
-        self.conv0_4 = DoubleConv(nb_filter[0]*4+nb_filter[1], nb_filter[0])
+        self.conv0_4 = DoubleConv(nb_filter[0] * 4 + nb_filter[1], nb_filter[0])
         self.sigmoid = nn.Sigmoid()
         if self.deepsupervision:
             self.final1 = nn.Conv2d(nb_filter[0], out_channel, kernel_size=1)
@@ -67,7 +69,6 @@ class NestedUNet(nn.Module):
             self.final4 = nn.Conv2d(nb_filter[0], out_channel, kernel_size=1)
         else:
             self.final = nn.Conv2d(nb_filter[0], out_channel, kernel_size=1)
-
 
     def forward(self, input):
         x0_0 = self.conv0_0(input)
@@ -88,7 +89,6 @@ class NestedUNet(nn.Module):
         x2_2 = self.conv2_2(torch.cat([x2_0, x2_1, self.up(x3_1)], 1))
         x1_3 = self.conv1_3(torch.cat([x1_0, x1_1, x1_2, self.up(x2_2)], 1))
         x0_4 = self.conv0_4(torch.cat([x0_0, x0_1, x0_2, x0_3, self.up(x1_3)], 1))
-
 
         if self.deepsupervision:
             output1 = self.final1(x0_1)

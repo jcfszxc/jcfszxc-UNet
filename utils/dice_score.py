@@ -22,15 +22,15 @@ def dice_coeff(
 
     # Add clipping to prevent extreme values
     input = torch.clamp(input, min=0.0, max=1.0)
-    
+
     sum_dim = (-1, -2) if input.dim() == 2 or not reduce_batch_first else (-1, -2, -3)
 
     inter = 2 * (input * target).sum(dim=sum_dim)
     sets_sum = input.sum(dim=sum_dim) + target.sum(dim=sum_dim)
-    
+
     # Increase epsilon for better numerical stability
     epsilon = 1e-5
-    
+
     # Handle empty masks
     sets_sum = torch.where(sets_sum < epsilon, inter, sets_sum)
 
@@ -54,6 +54,6 @@ def dice_loss(input: Tensor, target: Tensor, multiclass: bool = False):
     # Dice loss (objective to minimize) between 0 and 1
     # Add gradient clipping to prevent NaN
     input = torch.clamp(input, min=1e-7, max=1.0 - 1e-7)
-    
+
     fn = multiclass_dice_coeff if multiclass else dice_coeff
     return 1 - fn(input, target, reduce_batch_first=True)

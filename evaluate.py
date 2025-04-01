@@ -317,6 +317,9 @@ def eval_model(
         label_img = labels_data_pool[i]
         image_img = images_data_pool[i]
 
+        Image.fromarray(np.array(pred_img * 255).astype(np.uint8)).save(f"demo/prediction_{i}.png")
+        Image.fromarray(np.array(label_img * 255).astype(np.uint8)).save(f"demo/label_{i}.png")
+        
         pred_img = np.repeat(np.expand_dims(pred_img, 0), 3, axis=0)
         label_img = np.repeat(np.expand_dims(label_img, 0), 3, axis=0)
 
@@ -375,7 +378,7 @@ def get_args():
         "--patch-size",
         "-p",
         type=int,
-        default=128,
+        default=512,
         help="Size of patches for prediction",
     )
     parser.add_argument(

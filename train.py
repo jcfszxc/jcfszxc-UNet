@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# @Time          : 2025/03/27 15:58
+# @Time          : 2025/03/30 18:01
 # @Author        : jcfszxc
 # @Email         : jcfszxc.ai@gmail.com
-# @File          : 2.train.py
+# @File          : train.py
 # @Description   :
+
 
 import argparse
 import logging
@@ -22,7 +23,7 @@ import random
 
 from data_loading import load_preprocessed_data, display_dataset_info, visualize_samples
 from utils.dice_score import dice_coeff, dice_loss
-from utils.utils import set_seed
+from utils.utils import set_seed, set_deterministic_mode
 
 from UNetFamily import (
     UNet,
@@ -39,7 +40,7 @@ from UNetFamily import (
     BCDUNet,
     SegNet,
     RetinaLiteNet,
-    UNetPP
+    UNetPP,
 )
 
 
@@ -58,7 +59,6 @@ def train_model(
     seed: int = 42,
     early_stopping_patience: int = 20,
 ):
-    set_seed(seed)
 
     # 1. 加载数据    dict_keys(['images', 'masks', 'labels', 'filenames'])
     dataset = load_preprocessed_data(input_data)
@@ -234,6 +234,7 @@ def train_model(
                         img_idx, :, x_start:x_end, y_start:y_end
                     ]
                     batch_labels.append(label_patch)
+                    
 
                 # First stack the numpy arrays
                 batch_images = np.stack(batch_images)
@@ -253,37 +254,43 @@ def train_model(
 
                 with torch.autocast(device.type if device.type != "mps" else "cpu"):
                     masks_pred = model(batch_images)
-                    
+
                     # Check for NaN in model output
                     if torch.isnan(masks_pred).any():
                         print("NaN in model output before loss calculation!")
                         continue
-                        
+
                     # Apply sigmoid first for numerical stability
                     masks_pred_sigmoid = torch.sigmoid(masks_pred)
-                    
+
                     # Calculate BCE loss
                     bce_loss = criterion(masks_pred, batch_labels)
-                    
+
                     # Calculate Dice loss with the sigmoid-activated predictions
                     dice = dice_loss(
                         masks_pred_sigmoid.squeeze(1),
                         batch_labels.squeeze(1),
                         multiclass=False,
                     )
-                    
+
                     # Combine losses with a weighting factor
                     alpha = 0.5  # You can adjust this weight
                     loss = alpha * bce_loss + (1 - alpha) * dice
-                    
+
                     # Check for NaN in loss
                     if torch.isnan(loss).any():
                         print("NaN loss detected! Debugging info:")
                         print(f"BCE loss: {bce_loss.item()}")
                         print(f"Dice loss: {dice.item()}")
-                        print(f"Batch images min/max: {batch_images.min()}/{batch_images.max()}")
-                        print(f"Batch labels min/max: {batch_labels.min()}/{batch_labels.max()}")
-                        print(f"Model output min/max: {masks_pred.min()}/{masks_pred.max()}")
+                        print(
+                            f"Batch images min/max: {batch_images.min()}/{batch_images.max()}"
+                        )
+                        print(
+                            f"Batch labels min/max: {batch_labels.min()}/{batch_labels.max()}"
+                        )
+                        print(
+                            f"Model output min/max: {masks_pred.min()}/{masks_pred.max()}"
+                        )
                         continue
 
                 optimizer.zero_grad(set_to_none=True)
@@ -479,9 +486,12 @@ def get_args():
 
     return parser.parse_args()
 
-
+    
 if __name__ == "__main__":
     args = get_args()
+    
+    set_seed(args.seed)
+    # set_deterministic_mode(seed)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -492,16 +502,15 @@ if __name__ == "__main__":
         model = torch.load(args.load, map_location=device)
         logging.info(f"Model loaded from {args.load}")
     else:
-        # model = UNet.UNet()  # lr=1e-6 Dice Score: 0.8098
-        # model = AttentionUNet.AttentionUNet()  # lr=1e-6 Dice Score: 0.8098
-        # model = DenseUNet.DenseUNet()  # lr=1e-6 Dice Score: 0.8115
-        # model = MCUNet.MCUNet()  # lr=1e-6 Dice Score: 0.8051
+        # model = UNet.UNet()  # lr=1e-6 Dice Score: 0.8108
+        # model = AttentionUNet.AttentionUNet()  # lr=1e-6 Dice Score: 0.8091
+        # model = DenseUNet.DenseUNet()  # lr=1e-6 Dice Score: 0.8108
+        # model = MCUNet.MCUNet()  # lr=1e-6 Dice Score: 0.8033
         # model = ResUNet.ResUNet()  # lr=1e-6 Dice Score: 0.7609
         # model = FRUNet.FRUNet()  # lr=1e-6 Dice Score: 0.8227
         # model = MultiResUNet.MultiResUNet()  # lr=1e-6 Dice Score: 0.7778
         # model = SegNet.SegNet()  # lr=1e-6 Dice Score: 0.7325
-        
-        
+
         # model = R2UNet.R2UNet()  # 分数低，不适合
         # model = R2AttentionUNet.R2AttentionUNet()  # 分数低，不适合
         # model = BARUNet.BARUNet()  # 分数低，不适合
@@ -510,8 +519,9 @@ if __name__ == "__main__":
         # model = BCDUNet.BCDU_net_D3(N=args.patch_size)  # 分数低，不适合
         # model = RetinaLiteNet.TransFuseNet()  # 分数低，不适合
         # model = UNetPP.NestedUNet()  # 分数低，不适合
-        
-        
+
+        model = UNet.UNet()  # lr=1e-6 Dice Score: 0.8108
+
         model = model.to(memory_format=torch.channels_last)
 
     logging.info(
